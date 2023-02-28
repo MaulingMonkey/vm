@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en-US"><head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>VM</title>
+    <script>
+        function eat_any_current_event() {
+            if (event !== undefined) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
+        }
+
+        /** @param {WebAssembly.Module} module */
+        async function start_wasm_module(module) {
+            let [start] = WebAssembly.Module.customSections(module, "mm-vm-start");
+            let startText = new TextDecoder().decode(start);
+            /** @type {(module: WebAssembly.Module) => undefined} */
+            let startFn = eval(startText);
+            startFn(module);
+        }
+
+        /** @param {File | FileSystemFileHandle=} file */
+        async function open_and_start_wasm_file(file) {
+            eat_any_current_event();
+
+            if (file === undefined) [file] = await window.showOpenFilePicker({
+                id:                     "wasm-vm-file",
+                startIn:                "documents",
+                multiple:               false, // (default)
+                excludeAcceptAllOption: false, // (default)
+                types: [{
+                    description: "WASM VMs",
+                    accept: { "application/wasm": [".vm.wasm", ".wasm"] },
+                }],
+            });
+
+            if ('getFile' in file) file = await file.getFile();     // FileSystemFileHandle -> File
+            let array_buffer = await file.arrayBuffer();            // File -> ArrayBuffer
+            let module = await WebAssembly.compile(array_buffer);   // ArrayBuffer -> WebAssembly.Module
+            return await start_wasm_module(module);
+        }
+
+        /** @param {FileSystemDirectoryHandle=} dir */
+        async function open_and_start_wasm_dir(dir) {
+            eat_any_current_event();
+
+            if (dir === undefined) [dir] = await window.showDirectoryPicker({
+                id:         "wasm-vm-dir",
+                mode:       "read",
+                startIn:    "documents",
+            });
+
+            let file = await dir.getFileHandle("boot.vm.wasm");
+            return await open_and_start_wasm_file(file);
+        }
+
+        /** @param {string} url */
+        async function open_and_start_wasm_url(url) {
+            eat_any_current_event();
+
+            let module = await WebAssembly.compileStreaming(fetch(url));
+            return await start_wasm_module(module);
+        }
+    </script>
+</head><body>
+    <button onclick="open_and_start_wasm_file();">Open File</button><br>
+    <button onclick="open_and_start_wasm_dir();">Open Dir</button><br>
+</body></html>
